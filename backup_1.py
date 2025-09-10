@@ -128,74 +128,72 @@ else:
         else:
             st.warning("⚠️ NIM tidak valid. Silakan cek kembali.")
 
-    cards_per_row = 3
+    cols = st.columns(3)
 
-    for i in range(0, len(df_tanggal), cards_per_row):
-        with st.container():
-            row_cards = df_tanggal.iloc[i : i + cards_per_row]
-            cols = st.columns(len(row_cards))
+    for idx, row in enumerate(df_tanggal.itertuples(), 1):
+        available = st.session_state[session_key][row.computer_id]  # ambil status
 
-            for col, row in zip(cols, row_cards.itertuples()):
-                available = st.session_state[session_key][row.computer_id]
-                status_class = "available" if available else "not-available"
-                status_text = "✅ Available" if available else "❌ Tidak Tersedia"
+        status_class = "available" if available else "not-available"
+        status_text = "✅ Available" if available else "❌ Tidak Tersedia"
 
-                # Tampilkan card (hanya visual)
-                col.markdown(
-                    f"""
-                    <div class="computer-card {status_class}">
-                        <div style="font-size:40px;">🖥️</div>
-                        <div>{row.Komputer}</div>
-                        <div style="font-size:14px;">{status_text}</div>
-                        <div style="font-size:12px;">{row.Lokasi}</div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+        with cols[(idx - 1) % 3]:
+            st.markdown(
+                f"""
+                <div class="computer-card {status_class}">
+                    <div style="font-size:40px;">🖥️</div>
+                    <div>{row.Komputer}</div>
+                    <div style="font-size:14px;">{status_text}</div>
+                    <div style="font-size:12px;">{row.Lokasi}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
-                # Tampilkan tombol / form interaktif **setelah card**
-                if available:
-                    with col.expander("Ajukan Peminjaman"):
-                        with st.form(key=f"form_{row.Komputer}"):
-                            st.text_input(
-                                "Nomor Komputer:", value=row.Komputer, disabled=True
-                            )
-                            submitted = st.form_submit_button("Kirim Pengajuan")
+            if available:
+                with st.expander(f"Ajukan Peminjaman"):
+                    with st.form(key=f"form_{row.Komputer}"):
+                        st.text_input(
+                            "Nomor Komputer:", value=row.Komputer, disabled=True
+                        )
+                        submitted = st.form_submit_button("Kirim Pengajuan")
 
-                            if submitted:
-                                if not user_id_global:
-                                    st.error(
-                                        "❌ Anda belum memasukkan NIM yang valid di atas."
+                        if submitted:
+                            if not user_id_global:
+                                st.error(
+                                    "❌ Anda belum memasukkan NIM yang valid di atas."
+                                )
+                            else:
+                                # Cek apakah user sudah mengajukan pada tanggal yang sama dan statusnya bukan 'rejected'
+                                existing_loan = (
+                                    supabase.table("loans")
+                                    .select("*")
+                                    .eq("user_id", user_id_global)
+                                    .eq("loan_date", tanggal.isoformat())
+                                    .neq("status", "rejected")
+                                    .execute()
+                                )
+
+                                if existing_loan.data:
+                                    st.warning(
+                                        "⚠️ Anda sudah mengajukan peminjaman komputer pada tanggal ini. "
+                                        "Hanya pengajuan dengan status 'rejected' yang bisa diajukan ulang."
                                     )
                                 else:
-                                    existing_loan = (
-                                        supabase.table("loans")
-                                        .select("*")
-                                        .eq("user_id", user_id_global)
-                                        .eq("loan_date", tanggal.isoformat())
-                                        .neq("status", "rejected")
-                                        .execute()
+                                    # Insert ke tabel loans (status pending)
+                                    supabase.table("loans").insert(
+                                        {
+                                            "user_id": user_id_global,
+                                            "computer_id": row.computer_id,
+                                            "loan_date": tanggal.isoformat(),
+                                            "status": "pending",
+                                        }
+                                    ).execute()
+
+                                    st.success(
+                                        f"✅ Pengajuan peminjaman {row.Komputer} berhasil dikirim! Menunggu persetujuan admin."
                                     )
 
-                                    if existing_loan.data:
-                                        st.warning(
-                                            "⚠️ Anda sudah mengajukan peminjaman pada tanggal ini."
-                                        )
-                                    else:
-                                        supabase.table("loans").insert(
-                                            {
-                                                "user_id": user_id_global,
-                                                "computer_id": row.computer_id,
-                                                "loan_date": tanggal.isoformat(),
-                                                "status": "pending",
-                                            }
-                                        ).execute()
-                                        st.success(
-                                            f"✅ Pengajuan {row.Komputer} berhasil dikirim!"
-                                        )
-                else:
-                    col.button(
-                        "Tidak tersedia",
-                        disabled=True,
-                        key=f"not_available_{row.Komputer}",
-                    )
+            else:
+                st.button(
+                    "Tidak tersedia", disabled=True, key=f"not_available_{row.Komputer}"
+                )

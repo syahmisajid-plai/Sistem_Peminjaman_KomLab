@@ -24,7 +24,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.subheader("📑 Daftar Peminjaman Komputer")
+st.subheader("📑 Cek Peminjaman Komputer")
 
 nim = st.text_input(":blue[Masukkan NIM:]")
 password = st.text_input(":blue[Password:]", type="password")
