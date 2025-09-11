@@ -97,7 +97,12 @@ else:
 
     # --- Tampilkan data loans ---
     if loans and loans.data:
-        for loan in loans.data:
+        # Tambahkan sorting: pending dulu
+        sorted_loans = sorted(
+            loans.data, key=lambda x: 0 if x["status"].lower() == "pending" else 1
+        )
+
+        for loan in sorted_loans:
             status = loan["status"].lower()
             if status == "pending":
                 status_color = "#FFD700"
