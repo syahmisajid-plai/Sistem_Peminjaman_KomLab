@@ -62,12 +62,12 @@ else:
         }
     )
 
-    # 🔽 Pilihan lokasi lab
-    all_locations = df["Lokasi"].unique().tolist()
-    selected_location = st.selectbox("🏢 :blue[Pilih Lab:]", options=all_locations)
+    # # 🔽 Pilihan lokasi lab
+    # all_locations = df["Lokasi"].unique().tolist()
+    # selected_location = st.selectbox("🏢 :blue[Pilih Lab:]", options=all_locations)
 
-    # Filter berdasarkan lokasi (jika bukan "Semua Lab")
-    df = df[df["Lokasi"] == selected_location]
+    # # Filter berdasarkan lokasi (jika bukan "Semua Lab")
+    # df = df[df["Lokasi"] == selected_location]
 
     today = date.today()
     max_date = today + timedelta(days=7)
@@ -78,60 +78,6 @@ else:
 
     # Filter berdasarkan tanggal yang cocok
     df_tanggal = df[df["Tanggal"] == tanggal].sort_values(by="Komputer")
-
-    total = len(df_tanggal)
-    tersedia = df_tanggal["Tersedia"].sum()
-    tidak_tersedia = total - tersedia
-
-    st.markdown(
-        f"""
-        <style>
-            .stats-container {{
-                display: flex;
-                flex-wrap: wrap;
-                justify-content: space-around;
-                margin-bottom: 20px;
-            }}
-            .stat-card {{
-                background-color: #0f172a;
-                color: white;
-                padding: 20px;
-                border-radius: 10px;
-                text-align: center;
-                width: 30%;
-                min-width: 120px;
-                margin: 10px 0;
-            }}
-            .stat-number {{
-                font-size: 45px;
-                font-weight: bold;
-            }}
-            .stat-label {{
-                font-size: 14px;
-            }}
-            @media (max-width: 600px) {{
-                .stat-card {{
-                    width: 45%;
-                }}
-            }}
-        </style>
-        <div class="stats-container">
-            <div class="stat-card">
-                <div class="stat-label">Total Komputer</div>
-                <div class="stat-number">{total}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Tersedia</div>
-                <div class="stat-number" style="color:green;">{tersedia}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Tidak Tersedia</div>
-                <div class="stat-number" style="color:red;">{tidak_tersedia}</div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
     st.subheader(f"📋 Daftar Komputer Tanggal {tanggal}")
 
@@ -145,118 +91,236 @@ else:
         if row.computer_id not in st.session_state[session_key]:
             st.session_state[session_key][row.computer_id] = row.Tersedia
 
-    # Global NIM input (di atas daftar komputer, bukan sidebar)
+    # Input NIM & password
     nim_global = st.text_input(":blue[Masukkan NIM Anda (wajib diisi):]")
+    password_input = st.text_input(":blue[Masukkan Password Anda:]", type="password")
     user_id_global = None
+    selected_location = None
 
-    if nim_global:
-        user_resp = supabase.table("users").select("id").eq("nim", nim_global).execute()
-        if user_resp.data:
-            user_id_global = user_resp.data[0]["id"]
-        else:
-            st.warning("⚠️ NIM tidak valid. Silakan cek kembali.")
+    if nim_global and password_input:
+        # ✅ Gunakan RPC untuk cek NIM + password
+        check = supabase.rpc(
+            "check_user_password", {"p_nim": nim_global, "p_password": password_input}
+        ).execute()
 
-    cards_per_row = 3
+        if check.data and check.data["valid"]:
+            user_id_global = check.data["id"]
+            # Ambil prodi setelah password valid
+            user_resp = (
+                supabase.table("users")
+                .select("prodi")
+                .eq("id", user_id_global)
+                .execute()
+            )
+            if user_resp.data:
+                user_prodi = user_resp.data[0]["prodi"]
+                st.success("✅ Login berhasil!")
+            else:
+                st.error("❌ Data user tidak ditemukan.")
 
-    for i in range(0, len(df_tanggal), cards_per_row):
-        with st.container():
-            row_cards = df_tanggal.iloc[i : i + cards_per_row]
-            cols = st.columns(len(row_cards))
+            # Mapping prodi -> lokasi
+            prodi_to_lab = {
+                "Sains Data Terapan": "Lab Komputer Sains Data",
+                "Rekayasa Keamanan Siber": "Lab Komputer Rekayasa Keamanan Siber",
+                "AI dan Robotik": "Lab AI & Robotik",
+            }
+            selected_location = prodi_to_lab.get(user_prodi, None)
 
-            for col, row in zip(cols, row_cards.itertuples()):
-                # Gunakan .get() agar aman jika belum ada key
-                available = st.session_state[session_key].get(
-                    row.computer_id, row.Tersedia
-                )
-                status_class = "available" if available else "not-available"
-                status_text = "✅ Available" if available else "❌ Tidak Tersedia"
+            if selected_location:
+                df_filtered = df[df["Lokasi"] == selected_location]
+            else:
+                df_filtered = df.copy()
 
-                # Tampilkan card (hanya visual)
-                col.markdown(
-                    f"""
-                    <div class="computer-card {status_class}">
-                        <div style="font-size:40px;">🖥️</div>
-                        <div>{row.Komputer}</div>
-                        <div style="font-size:14px;">{status_text}</div>
-                        <div style="font-size:12px;">{row.Lokasi}</div>
+            # Filter tanggal
+            df_tanggal = df_filtered[df_filtered["Tanggal"] == tanggal].sort_values(
+                by="Komputer"
+            )
+
+            # 🔹 Tampilkan Statistik TOTAL setelah NIM valid
+            total = len(df_tanggal)
+            tersedia = df_tanggal["Tersedia"].sum()
+            tidak_tersedia = total - tersedia
+
+            st.markdown(
+                f"""
+                <style>
+                    .stats-container {{
+                        display: flex;
+                        flex-wrap: wrap;
+                        justify-content: space-around;
+                        margin-bottom: 20px;
+                    }}
+                    .stat-card {{
+                        background-color: #0f172a;
+                        color: white;
+                        padding: 20px;
+                        border-radius: 10px;
+                        text-align: center;
+                        width: 30%;
+                        min-width: 120px;
+                        margin: 10px 0;
+                    }}
+                    .stat-number {{
+                        font-size: 45px;
+                        font-weight: bold;
+                    }}
+                    .stat-label {{
+                        font-size: 14px;
+                    }}
+                    @media (max-width: 600px) {{
+                        .stat-card {{
+                            width: 45%;
+                        }}
+                    }}
+                </style>
+                <div class="stats-container">
+                    <div class="stat-card">
+                        <div class="stat-label">Total Komputer</div>
+                        <div class="stat-number">{total}</div>
                     </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+                    <div class="stat-card">
+                        <div class="stat-label">Tersedia</div>
+                        <div class="stat-number" style="color:green;">{tersedia}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Tidak Tersedia</div>
+                        <div class="stat-number" style="color:red;">{tidak_tersedia}</div>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
-                # Tampilkan tombol / form interaktif **setelah card**
-                if available:
-                    with col.expander("Ajukan Peminjaman"):
-                        with st.form(key=f"form_{row.computer_id}"):
-                            st.text_input(
-                                "Nomor Komputer:", value=row.Komputer, disabled=True
+            # 🔹 Tambahkan pengecekan pending di sini
+            loans_pending_resp = (
+                supabase.table("loans")
+                .select("computer_id, status")
+                .eq("loan_date", tanggal.isoformat())
+                .eq("status", "pending")
+                .execute()
+            )
+
+            # Buat list komputer yang sedang diajukan
+            pending_computers = [
+                loan["computer_id"] for loan in loans_pending_resp.data
+            ]
+
+            cards_per_row = 3
+
+            for i in range(0, len(df_tanggal), cards_per_row):
+                with st.container():
+                    row_cards = df_tanggal.iloc[i : i + cards_per_row]
+                    cols = st.columns(len(row_cards))
+
+                    for col, row in zip(cols, row_cards.itertuples()):
+                        # Gunakan .get() agar aman jika belum ada key
+                        available = st.session_state[session_key].get(
+                            row.computer_id, row.Tersedia
+                        )
+                        status_class = "available" if available else "not-available"
+                        status_text = (
+                            "✅ Available" if available else "❌ Tidak Tersedia"
+                        )
+
+                        # Tampilkan card (hanya visual)
+                        col.markdown(
+                            f"""
+                            <div class="computer-card {status_class}">
+                                <div style="font-size:40px;">🖥️</div>
+                                <div>{row.Komputer}</div>
+                                <div style="font-size:14px;">{status_text}</div>
+                                <div style="font-size:12px;">{row.Lokasi}</div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
+
+                        if row.computer_id in pending_computers:
+                            col.button(
+                                "❌ Sedang diajukan user lain",
+                                disabled=True,
+                                key=f"pending_{row.computer_id}_{tanggal.isoformat()}",
                             )
-                            submitted = st.form_submit_button("Kirim Pengajuan")
 
-                            if submitted:
-                                if not user_id_global:
-                                    st.error(
-                                        "❌ Anda belum memasukkan NIM yang valid di atas."
+                        # Tampilkan tombol / form interaktif **setelah card**
+                        elif available:
+                            with col.expander("Ajukan Peminjaman"):
+                                with st.form(key=f"form_{row.computer_id}"):
+                                    st.text_input(
+                                        "Nomor Komputer:",
+                                        value=row.Komputer,
+                                        disabled=True,
                                     )
-                                else:
-                                    # 🔎 Ambil prodi user
-                                    user_resp = (
-                                        supabase.table("users")
-                                        .select("prodi")
-                                        .eq("id", user_id_global)
-                                        .execute()
-                                    )
-                                    if user_resp.data:
-                                        user_prodi = user_resp.data[0]["prodi"]
+                                    submitted = st.form_submit_button("Kirim Pengajuan")
 
-                                        # Mapping prodi -> lokasi
-                                        prodi_to_lab = {
-                                            "Sains Data Terapan": "Lab Komputer Sains Data",
-                                            "Rekayasa Keamanan Siber": "Lab Komputer Rekayasa Keamanan Siber",
-                                            "AI dan Robotik": "Lab AI & Robotik",
-                                        }
-
-                                        allowed_lab = prodi_to_lab.get(user_prodi, None)
-
-                                        # ✅ Verifikasi prodi vs lokasi komputer
-                                        if allowed_lab and row.Lokasi != allowed_lab:
+                                    if submitted:
+                                        if not user_id_global:
                                             st.error(
-                                                f"❌ Anda dari prodi {user_prodi}, hanya bisa meminjam di {allowed_lab}"
+                                                "❌ Anda belum memasukkan NIM yang valid di atas."
                                             )
                                         else:
-                                            # Cek apakah user sudah punya pengajuan pada tanggal ini
-                                            existing_loan = (
-                                                supabase.table("loans")
-                                                .select("*")
-                                                .eq("user_id", user_id_global)
-                                                .eq("loan_date", tanggal.isoformat())
-                                                .neq("status", "rejected")
+                                            # 🔎 Ambil prodi user
+                                            user_resp = (
+                                                supabase.table("users")
+                                                .select("prodi")
+                                                .eq("id", user_id_global)
                                                 .execute()
                                             )
+                                            if user_resp.data:
+                                                user_prodi = user_resp.data[0]["prodi"]
 
-                                            if existing_loan.data:
-                                                st.warning(
-                                                    "⚠️ Anda sudah mengajukan peminjaman pada tanggal ini."
+                                                allowed_lab = prodi_to_lab.get(
+                                                    user_prodi, None
                                                 )
+
+                                                # ✅ Verifikasi prodi vs lokasi komputer
+                                                if (
+                                                    allowed_lab
+                                                    and row.Lokasi != allowed_lab
+                                                ):
+                                                    st.error(
+                                                        f"❌ Anda dari prodi {user_prodi}, hanya bisa meminjam di {allowed_lab}"
+                                                    )
+                                                else:
+                                                    # Cek apakah user sudah punya pengajuan pada tanggal ini
+                                                    existing_loan = (
+                                                        supabase.table("loans")
+                                                        .select("*")
+                                                        .eq("user_id", user_id_global)
+                                                        .eq(
+                                                            "loan_date",
+                                                            tanggal.isoformat(),
+                                                        )
+                                                        .neq("status", "rejected")
+                                                        .execute()
+                                                    )
+
+                                                    if existing_loan.data:
+                                                        st.warning(
+                                                            "⚠️ Anda sudah mengajukan peminjaman pada tanggal ini."
+                                                        )
+                                                    else:
+                                                        supabase.table("loans").insert(
+                                                            {
+                                                                "user_id": user_id_global,
+                                                                "computer_id": row.computer_id,
+                                                                "loan_date": tanggal.isoformat(),
+                                                                "status": "pending",
+                                                            }
+                                                        ).execute()
+                                                        st.success(
+                                                            f"✅ Pengajuan {row.Komputer} berhasil dikirim!"
+                                                        )
                                             else:
-                                                supabase.table("loans").insert(
-                                                    {
-                                                        "user_id": user_id_global,
-                                                        "computer_id": row.computer_id,
-                                                        "loan_date": tanggal.isoformat(),
-                                                        "status": "pending",
-                                                    }
-                                                ).execute()
-                                                st.success(
-                                                    f"✅ Pengajuan {row.Komputer} berhasil dikirim!"
+                                                st.error(
+                                                    "❌ Data prodi user tidak ditemukan, hubungi admin."
                                                 )
-                                    else:
-                                        st.error(
-                                            "❌ Data prodi user tidak ditemukan, hubungi admin."
-                                        )
-                else:
-                    col.button(
-                        "Tidak tersedia",
-                        disabled=True,
-                        key=f"not_available_{row.Komputer}",
-                    )
+                        else:
+                            col.button(
+                                "Tidak tersedia",
+                                disabled=True,
+                                key=f"not_available_{row.computer_id}_{tanggal.isoformat()}",
+                            )
+
+        else:
+            st.warning("⚠️ Login Gagal. NIM/Password tidak valid. Silakan cek kembali.")

@@ -84,12 +84,12 @@ if st.button("Lihat Status Peminjaman"):
 
                 styled_df = df_loans[
                     [
+                        "Status",
                         "NIM",
                         "Nama User",
                         "Nama Lab",
                         "Nama Komputer",
                         "Tanggal",
-                        "Status",
                     ]
                 ].style.applymap(highlight_status, subset=["Status"])
                 st.dataframe(styled_df, use_container_width=True)
