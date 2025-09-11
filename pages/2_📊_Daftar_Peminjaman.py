@@ -46,7 +46,7 @@ if st.button("Lihat Status Peminjaman"):
                 .select(
                     "loan_date, status, "
                     "computer_id, "
-                    "computers(name), "
+                    "computers(name, location),"
                     "users(name, nim)"
                 )
                 .eq("user_id", user_id)
@@ -62,6 +62,9 @@ if st.button("Lihat Status Peminjaman"):
                 df_loans["Nama Komputer"] = df_loans["computers"].apply(
                     lambda x: x["name"]
                 )
+                df_loans["Nama Lab"] = df_loans["computers"].apply(
+                    lambda x: x["location"]
+                )
                 df_loans["Nama User"] = df_loans["users"].apply(lambda x: x["name"])
                 df_loans["NIM"] = df_loans["users"].apply(lambda x: x["nim"])
 
@@ -70,10 +73,27 @@ if st.button("Lihat Status Peminjaman"):
                     columns={"loan_date": "Tanggal", "status": "Status"}
                 )
 
-                # Tampilkan tabel
-                st.dataframe(
-                    df_loans[["Tanggal", "Nama Komputer", "Nama User", "NIM", "Status"]]
-                )
+                def highlight_status(val):
+                    if val == "approved":
+                        color = "lightgreen"
+                    elif val == "pending":
+                        color = "yellow"
+                    else:
+                        color = "lightcoral"
+                    return f"background-color: {color}"
+
+                styled_df = df_loans[
+                    [
+                        "NIM",
+                        "Nama User",
+                        "Nama Lab",
+                        "Nama Komputer",
+                        "Tanggal",
+                        "Status",
+                    ]
+                ].style.applymap(highlight_status, subset=["Status"])
+                st.dataframe(styled_df, use_container_width=True)
+
             else:
                 st.info("ℹ️ Belum ada riwayat peminjaman.")
         else:

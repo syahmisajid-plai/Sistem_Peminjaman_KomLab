@@ -62,6 +62,13 @@ else:
         }
     )
 
+    # 🔽 Pilihan lokasi lab
+    all_locations = df["Lokasi"].unique().tolist()
+    selected_location = st.selectbox("🏢 :blue[Pilih Lab:]", options=all_locations)
+
+    # Filter berdasarkan lokasi (jika bukan "Semua Lab")
+    df = df[df["Lokasi"] == selected_location]
+
     today = date.today()
     max_date = today + timedelta(days=7)
 
@@ -131,9 +138,12 @@ else:
     # Gunakan tanggal sebagai bagian key untuk session_state
     session_key = f"status_komputer_{tanggal.isoformat()}"
     if session_key not in st.session_state:
-        st.session_state[session_key] = {
-            row.computer_id: row.Tersedia for row in df_tanggal.itertuples()
-        }
+        st.session_state[session_key] = {}
+
+    # Update isi session_state sesuai df_tanggal
+    for row in df_tanggal.itertuples():
+        if row.computer_id not in st.session_state[session_key]:
+            st.session_state[session_key][row.computer_id] = row.Tersedia
 
     # Global NIM input (di atas daftar komputer, bukan sidebar)
     nim_global = st.text_input(":blue[Masukkan NIM Anda (wajib diisi):]")
@@ -154,7 +164,10 @@ else:
             cols = st.columns(len(row_cards))
 
             for col, row in zip(cols, row_cards.itertuples()):
-                available = st.session_state[session_key][row.computer_id]
+                # Gunakan .get() agar aman jika belum ada key
+                available = st.session_state[session_key].get(
+                    row.computer_id, row.Tersedia
+                )
                 status_class = "available" if available else "not-available"
                 status_text = "✅ Available" if available else "❌ Tidak Tersedia"
 
@@ -174,7 +187,7 @@ else:
                 # Tampilkan tombol / form interaktif **setelah card**
                 if available:
                     with col.expander("Ajukan Peminjaman"):
-                        with st.form(key=f"form_{row.Komputer}"):
+                        with st.form(key=f"form_{row.computer_id}"):
                             st.text_input(
                                 "Nomor Komputer:", value=row.Komputer, disabled=True
                             )
@@ -186,30 +199,60 @@ else:
                                         "❌ Anda belum memasukkan NIM yang valid di atas."
                                     )
                                 else:
-                                    existing_loan = (
-                                        supabase.table("loans")
-                                        .select("*")
-                                        .eq("user_id", user_id_global)
-                                        .eq("loan_date", tanggal.isoformat())
-                                        .neq("status", "rejected")
+                                    # 🔎 Ambil prodi user
+                                    user_resp = (
+                                        supabase.table("users")
+                                        .select("prodi")
+                                        .eq("id", user_id_global)
                                         .execute()
                                     )
+                                    if user_resp.data:
+                                        user_prodi = user_resp.data[0]["prodi"]
 
-                                    if existing_loan.data:
-                                        st.warning(
-                                            "⚠️ Anda sudah mengajukan peminjaman pada tanggal ini."
-                                        )
+                                        # Mapping prodi -> lokasi
+                                        prodi_to_lab = {
+                                            "Sains Data Terapan": "Lab Komputer Sains Data",
+                                            "Rekayasa Keamanan Siber": "Lab Komputer Rekayasa Keamanan Siber",
+                                            "AI dan Robotik": "Lab AI & Robotik",
+                                        }
+
+                                        allowed_lab = prodi_to_lab.get(user_prodi, None)
+
+                                        # ✅ Verifikasi prodi vs lokasi komputer
+                                        if allowed_lab and row.Lokasi != allowed_lab:
+                                            st.error(
+                                                f"❌ Anda dari prodi {user_prodi}, hanya bisa meminjam di {allowed_lab}"
+                                            )
+                                        else:
+                                            # Cek apakah user sudah punya pengajuan pada tanggal ini
+                                            existing_loan = (
+                                                supabase.table("loans")
+                                                .select("*")
+                                                .eq("user_id", user_id_global)
+                                                .eq("loan_date", tanggal.isoformat())
+                                                .neq("status", "rejected")
+                                                .execute()
+                                            )
+
+                                            if existing_loan.data:
+                                                st.warning(
+                                                    "⚠️ Anda sudah mengajukan peminjaman pada tanggal ini."
+                                                )
+                                            else:
+                                                supabase.table("loans").insert(
+                                                    {
+                                                        "user_id": user_id_global,
+                                                        "computer_id": row.computer_id,
+                                                        "loan_date": tanggal.isoformat(),
+                                                        "status": "pending",
+                                                    }
+                                                ).execute()
+                                                st.success(
+                                                    f"✅ Pengajuan {row.Komputer} berhasil dikirim!"
+                                                )
                                     else:
-                                        supabase.table("loans").insert(
-                                            {
-                                                "user_id": user_id_global,
-                                                "computer_id": row.computer_id,
-                                                "loan_date": tanggal.isoformat(),
-                                                "status": "pending",
-                                            }
-                                        ).execute()
-                                        st.success(
-                                            f"✅ Pengajuan {row.Komputer} berhasil dikirim!"
+                                        st.error(
+                                            "❌ Data prodi user tidak ditemukan, hubungi admin."
                                         )
                 else:
                     col.button(
