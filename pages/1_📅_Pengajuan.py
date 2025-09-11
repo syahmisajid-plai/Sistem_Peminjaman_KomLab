@@ -76,35 +76,53 @@ else:
     tersedia = df_tanggal["Tersedia"].sum()
     tidak_tersedia = total - tersedia
 
-    col1, col2, col3 = st.columns(3)
-
-    col1.markdown(
+    st.markdown(
         f"""
-    <div style='text-align:center;'>
-        <span style='color: white; font-size: 14px;'>Total Komputer</span><br>
-        <span style='color: white; font-size: 45px; font-weight: bold;'>{total}</span>
-    </div>
-    """,
-        unsafe_allow_html=True,
-    )
-
-    col2.markdown(
-        f"""
-    <div style='text-align:center;'>
-        <span style='color: white; font-size: 14px;'>Tersedia</span><br>
-        <span style='color: green; font-size: 45px; font-weight: bold;'>{tersedia}</span>
-    </div>
-    """,
-        unsafe_allow_html=True,
-    )
-
-    col3.markdown(
-        f"""
-    <div style='text-align:center;'>
-        <span style='color: white; font-size: 14px;'>Tidak Tersedia</span><br>
-        <span style='color: red; font-size: 45px; font-weight: bold;'>{tidak_tersedia}</span>
-    </div>
-    """,
+        <style>
+            .stats-container {{
+                display: flex;
+                flex-wrap: wrap;
+                justify-content: space-around;
+                margin-bottom: 20px;
+            }}
+            .stat-card {{
+                background-color: #0f172a;
+                color: white;
+                padding: 20px;
+                border-radius: 10px;
+                text-align: center;
+                width: 30%;
+                min-width: 120px;
+                margin: 10px 0;
+            }}
+            .stat-number {{
+                font-size: 45px;
+                font-weight: bold;
+            }}
+            .stat-label {{
+                font-size: 14px;
+            }}
+            @media (max-width: 600px) {{
+                .stat-card {{
+                    width: 45%;
+                }}
+            }}
+        </style>
+        <div class="stats-container">
+            <div class="stat-card">
+                <div class="stat-label">Total Komputer</div>
+                <div class="stat-number">{total}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Tersedia</div>
+                <div class="stat-number" style="color:green;">{tersedia}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Tidak Tersedia</div>
+                <div class="stat-number" style="color:red;">{tidak_tersedia}</div>
+            </div>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
